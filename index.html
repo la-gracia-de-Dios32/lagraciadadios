@@ -449,6 +449,7 @@ footer{background:linear-gradient(135deg,#3D0000,#6B0A0A);margin-top:3rem;paddin
   .prod-card:active{transform:scale(0.97)}
   .add-btn:active{transform:scale(0.95)}
 }
+#admin-btn{display:none!important}
 </style>
 </head>
 <body>
@@ -470,6 +471,7 @@ footer{background:linear-gradient(135deg,#3D0000,#6B0A0A);margin-top:3rem;paddin
       <button id="search-clear" onclick="clearSearch()">✕</button>
     </div>
     <div id="header-btns">
+      <button class="hbtn" id="admin-btn" onclick="showView('login')">⚙️ Admin</button>
       <button id="cart-btn" onclick="openCart()">🛒 <span class="cart-label" style="font-size:14px">Carrito</span><span id="cart-count">0</span></button>
       <button id="hamburger" onclick="openMobileMenu()">☰</button>
     </div>
@@ -1266,6 +1268,13 @@ function renderAdminList(){
       +'</div>';
   }).join("");
 }
+
+// Secret shortcut to access admin: press Ctrl+Shift+A
+document.addEventListener('keydown', function(e) {
+  if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+    showView('login');
+  }
+});
 </script>
 </body>
 </html>
