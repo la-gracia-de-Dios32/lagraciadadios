@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Importar productos · La Gracia De Dios</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<!-- Datos extraídos del PDF (171 productos, generado una sola vez) -->
+<script src="productos-datos.js"></script>
+
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#0F1117;color:#F0F0F0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .box{background:#1A1D27;border:1px solid #2E3247;border-radius:16px;padding:2rem;max-width:560px;width:100%}
+  h1{font-size:20px;margin-bottom:6px}
+  p{color:#A0A0B0;font-size:14px;line-height:1.6;margin-bottom:16px}
+  button{cursor:pointer;font-family:inherit;font-weight:700;border:none;border-radius:10px;padding:12px 20px;font-size:15px}
+  .btn-google{width:100%;background:#252836;color:#fff;border:1px solid #2E3247;margin-bottom:10px}
+  .btn-import{width:100%;background:#27AE60;color:#fff;margin-top:8px}
+  .btn-import:disabled{opacity:0.5;cursor:not-allowed}
+  #log{background:#0F1117;border:1px solid #2E3247;border-radius:10px;padding:12px;margin-top:16px;font-size:12.5px;font-family:monospace;max-height:280px;overflow-y:auto;white-space:pre-wrap;display:none}
+  .stat{display:flex;justify-content:space-between;font-size:13px;color:#A0A0B0;margin-bottom:4px}
+  .stat b{color:#F0F0F0}
+  #err{color:#E74C3C;font-size:13px;margin-top:10px;display:none}
+  #app{display:none}
+</style>
+</head>
+<body>
+
+<div class="box" id="login-box">
+  <h1>🔒 Importar productos</h1>
+  <p>Herramienta de un solo uso para cargar los productos del PDF a Firestore. Inicia sesión con la cuenta admin.</p>
+  <button class="btn-google" onclick="login()">Iniciar sesión con Google</button>
+  <div id="err"></div>
+</div>
+
+<div class="box" id="app">
+  <h1>📦 Importar productos a Firestore</h1>
+  <p>Se van a crear documentos nuevos en la colección <b>products</b>. No borra ni sobreescribe nada existente.</p>
+
+  <div class="stat">Total en el archivo: <b id="stat-total">-</b></div>
+  <div class="stat">Con precio: <b id="stat-price">-</b></div>
+  <div class="stat">Sin precio (revisar luego en el admin): <b id="stat-noprice">-</b></div>
+  <div class="stat">Con foto: <b id="stat-img">-</b></div>
+  <div class="stat">Sin foto (usa emoji de la categoría): <b id="stat-noimg">-</b></div>
+
+  <button class="btn-import" id="btn-import" onclick="runImport()">Importar los 171 productos</button>
+  <div id="log"></div>
+</div>
+
+<script>
+var firebaseConfig = {
+  apiKey: "AIzaSyB3Zdtc8Wus9gtk4pE0RH78XAQddrNwNHM",
+  authDomain: "lagraciadadios.firebaseapp.com",
+  projectId: "lagraciadadios",
+  storageBucket: "lagraciadadios.firebasestorage.app",
+  messagingSenderId: "387372992895",
+  appId: "1:387372992895:web:fac17c70ff3652feec724a"
+};
+var ADMIN_EMAIL = "alain.aimar18@gmail.com";
+
+firebase.initializeApp(firebaseConfig);
+var auth = firebase.auth();
+var db = firebase.firestore();
+var provider = new firebase.auth.GoogleAuthProvider();
+
+function login(){
+  auth.signInWithPopup(provider).catch(function(err){
+    showErr("Error: " + err.message);
+  });
+}
+function showErr(msg){
+  var e = document.getElementById("err");
+  e.textContent = msg; e.style.display = "";
+}
+
+auth.onAuthStateChanged(function(user){
+  if(user && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()){
+    document.getElementById("login-box").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    fillStats();
+  } else if(user){
+    showErr("⛔ Cuenta no autorizada: " + user.email);
+    auth.signOut();
+  }
+});
+
+function fillStats(){
+  var data = window.PRODUCTOS_IMPORT || [];
+  document.getElementById("stat-total").textContent = data.length;
+  document.getElementById("stat-price").textContent = data.filter(function(p){return p.price !== null;}).length;
+  document.getElementById("stat-noprice").textContent = data.filter(function(p){return p.price === null;}).length;
+  document.getElementById("stat-img").textContent = data.filter(function(p){return p.img;}).length;
+  document.getElementById("stat-noimg").textContent = data.filter(function(p){return !p.img;}).length;
+}
+
+function log(msg){
+  var el = document.getElementById("log");
+  el.style.display = "block";
+  el.textContent += msg + "\n";
+  el.scrollTop = el.scrollHeight;
+}
+
+async function runImport(){
+  var btn = document.getElementById("btn-import");
+  btn.disabled = true;
+  var data = window.PRODUCTOS_IMPORT || [];
+  log("Iniciando importación de " + data.length + " productos...");
+
+  var CHUNK = 400; // límite de Firestore es 500 por batch
+  var done = 0;
+  for(var i=0; i<data.length; i+=CHUNK){
+    var slice = data.slice(i, i+CHUNK);
+    var batch = db.batch();
+    slice.forEach(function(p){
+      var ref = db.collection("products").doc();
+      batch.set(ref, {
+        name: p.name,
+        category: p.category,
+        price: p.price,               // null si el PDF no traía precio -- revisar en el admin
+        priceNote: p.priceNote || null,
+        emoji: p.emoji,
+        img: p.img || null,
+        available: true,
+        tags: [],
+        stock: null,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+    try{
+      await batch.commit();
+      done += slice.length;
+      log("✅ Lote " + (Math.floor(i/CHUNK)+1) + " ok (" + done + "/" + data.length + ")");
+    }catch(e){
+      log("❌ Error en lote " + (Math.floor(i/CHUNK)+1) + ": " + e.message);
+      btn.disabled = false;
+      return;
+    }
+  }
+  log("\n🎉 Importación terminada: " + done + " productos creados en Firestore.");
+  log("Revisa en el admin los " + data.filter(function(p){return p.price===null;}).length + " productos sin precio antes de publicar la tienda.");
+  btn.textContent = "Importación completa";
+}
+</script>
+</body>
+</html>
